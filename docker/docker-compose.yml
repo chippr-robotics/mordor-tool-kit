@@ -2,6 +2,8 @@ version: '3.8'
 
 services:
   # Mordor Testnet Node (Core-Geth)
+  # SECURITY NOTE: CORS and WebSocket origins are set to "*" for development.
+  # For production, restrict --http.corsdomain and --ws.origins to specific domains.
   mordor-node:
     image: etclabscore/core-geth:latest
     container_name: mordor-node
@@ -181,6 +183,8 @@ services:
       retries: 5
 
   # Safe Transaction Service
+  # SECURITY NOTE: Django settings use development defaults.
+  # For production: change DJANGO_SECRET_KEY, restrict DJANGO_ALLOWED_HOSTS, and change all passwords.
   safe-transaction-service:
     image: safeglobal/safe-transaction-service:latest
     container_name: safe-transaction-service
