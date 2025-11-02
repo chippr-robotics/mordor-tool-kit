@@ -39,61 +39,99 @@ A comprehensive, production-ready monitoring solution for Ethereum Classic's Mor
 
 ## Architecture
 
+The Mordor toolkit includes a comprehensive Docker infrastructure for monitoring and interacting with the Mordor testnet:
 
+### Core Services
+- **Mordor Node** (Core-Geth) - Ethereum Classic Mordor testnet node
+- **Fork Monitor** - Real-time blockchain fork detection
+- **Gas Estimator** - Gas price analysis and recommendations
+
+### Monitoring Stack
+- **Prometheus** - Metrics collection and storage
+- **Grafana** - Metrics visualization and dashboards
+
+### Additional Infrastructure
+- **IPFS (Kubo)** - Decentralized storage
+- **Safe Transaction Service** - Multisig transaction management with PostgreSQL, Redis, and RabbitMQ
+
+```
 ┌─────────────────┐
 │  Core-Geth      │
 │  (Mordor Node)  │
 │  :8545 RPC      │
 └────────┬────────┘
          │
-                  ├──────────┐
-                           │          │
-                               ┌────▼─────┐  ┌▼──────────┐
-                                   │  Fork    │  │   Gas     │
-                                       │ Monitor  │  │ Estimator │
-                                           │ (Rust)   │  │  (Rust)   │
-                                               └────┬─────┘  └┬──────────┘
-                                                        │         │
-                                                                 │ :9090   │ :9091
-                                                                          │/metrics │/metrics
-                                                                                   │         │
-                                                                                       ┌────▼─────────▼──┐
-                                                                                           │   Prometheus    │
-                                                                                               │     :9090       │
-                                                                                                   └────────┬────────┘
-                                                                                                                │
-                                                                                                                        ┌────▼─────┐
-                                                                                                                                │ Grafana  │
-                                                                                                                                        │  :3000   │
-                                                                                                                                                └──────────┘
+         ├──────────┬──────────┬─────────────┐
+         │          │          │             │
+    ┌────▼─────┐  ┌▼──────────┐  ┌─────▼────┐  ┌──▼──────┐
+    │  Fork    │  │   Gas     │  │  IPFS    │  │  Safe   │
+    │ Monitor  │  │ Estimator │  │  (Kubo)  │  │  Tx Svc │
+    │ (Rust)   │  │  (Rust)   │  │  :5001   │  │  :8000  │
+    └────┬─────┘  └┬──────────┘  └──────────┘  └─────────┘
+         │         │
+         │ :9090   │ :9091
+         │/metrics │/metrics
+         │         │
+    ┌────▼─────────▼──┐
+    │   Prometheus    │
+    │     :9092       │
+    └────────┬────────┘
+             │
+        ┌────▼─────┐
+        │ Grafana  │
+        │  :3000   │
+        └──────────┘
+```
 ## Quick Start
+
 ### Prerequisites
- - Docker & Docker Compose
- -  Rust 1.75+ (for building CLI tools)
- - 10GB+ free disk space
- - 4GB+ RAM
+- Docker 20.10+
+- Docker Compose 1.29+
+- Rust 1.75+ (for building CLI tools)
+- 20GB+ free disk space (includes Safe Transaction Service)
+- 8GB+ RAM recommended
 
- ### Installation
-1. **Clone and setup:**
-   ```bash
-   git clone <repository>
-   cd mordor-monitoring
-   make setup
-   ```
+### Installation
 
-   This will:
-    - Build all Docker images
-       - Start all services
-                                                                                                                                                - Wait for initialization
-                                                                                                                                                - Run health checks
+#### Using Docker Compose (Recommended)
 
-         2. **Access the dashboard:**
-            - Grafana: http://localhost:3000 (admin/admin)
-            - Prometheus: http://localhost:9092
-            - Fork Monitor Metrics: http://localhost:9090/metrics
-            - Gas Estimator Metrics: http://localhost:9091/metrics
+The complete infrastructure including IPFS and Safe Transaction Service is available in the `docker/` directory:
 
-### Manual Installation
+```bash
+# Clone the repository
+git clone https://github.com/chippr-robotics/mordor-tool-kit
+cd mordor-tool-kit/docker
+
+# Copy environment template and configure
+cp .env.example .env
+# Edit .env with your settings
+
+# Start all services
+./start.sh
+# Or use: make docker-up (from root directory)
+```
+
+**What you get:**
+- Mordor testnet node (Core-Geth)
+- Fork monitor and gas estimator
+- Prometheus & Grafana monitoring
+- IPFS node (Kubo) for decentralized storage
+- Safe Transaction Service with full stack (PostgreSQL, Redis, RabbitMQ)
+
+**Access the services:**
+- Grafana: http://localhost:3000 (admin/admin)
+- Prometheus: http://localhost:9092
+- Safe Transaction Service: http://localhost:8000
+- IPFS API: http://localhost:5001
+- IPFS Gateway: http://localhost:8080
+- RabbitMQ Management: http://localhost:15672 (safe/safe)
+- Fork Monitor Metrics: http://localhost:9090/metrics
+- Gas Estimator Metrics: http://localhost:9091/metrics
+- Mordor RPC: http://localhost:8545
+
+For detailed Docker setup instructions, see [docker/README.md](docker/README.md).
+
+### Manual Installation (Development)
 
 ```bash
 # Build images
@@ -109,14 +147,30 @@ make status
 
 ## Service Ports
 
+### Core Services
 | Service | Port | Description |
- |---------|------|-------------|
+|---------|------|-------------|
 | Mordor Node RPC | 8545 | JSON-RPC endpoint |
 | Mordor Node WS | 8546 | WebSocket endpoint |
 | Fork Monitor | 9090 | Metrics endpoint |
- | Gas Estimator | 9091 | Metrics endpoint |
+| Gas Estimator | 9091 | Metrics endpoint |
+
+### Monitoring
+| Service | Port | Description |
+|---------|------|-------------|
 | Prometheus | 9092 | Prometheus UI |
 | Grafana | 3000 | Grafana dashboard |
+
+### Additional Services (Docker)
+| Service | Port | Description |
+|---------|------|-------------|
+| IPFS API | 5001 | IPFS API endpoint |
+| IPFS Gateway | 8080 | IPFS HTTP gateway |
+| Safe Transaction Service | 8000 | Safe API endpoint |
+| PostgreSQL | 5432 | Database |
+| Redis | 6379 | Cache |
+| RabbitMQ | 5672 | Message broker (AMQP) |
+| RabbitMQ Management | 15672 | RabbitMQ web UI |
 
  ## CLI Usage
 ### Building the CLI
@@ -324,30 +378,49 @@ Edit `prometheus/prometheus.yml` to adjust:
 - Alert rules
 - Additional targets
 
-  ### Grafana Dashboard
+### Grafana Dashboard
 
-  The dashboard is automatically provisioned from:
-  ```
-  grafana/provisioning/dashboards/mordor-dashboard.json
-  ```
+The dashboard is automatically provisioned from:
+```
+docker/grafana/provisioning/dashboards/mordor-dashboard.json
+```
 
-  To update the dashboard:
-  1. Make changes in Grafana UI
-  2. Export JSON
-  3. Replace `mordor-dashboard.json`
-  4. Restart Grafana: `docker-compose restart grafana`
+To update the dashboard:
+1. Make changes in Grafana UI
+2. Export JSON
+3. Replace `mordor-dashboard.json`
+4. Restart Grafana: `cd docker && docker-compose restart grafana`
 
-     Or use:
-  ```bash
-  make update-dashboard
-  ```
+## Project Structure
 
-  
-                                                                                                                                                                                                                                                                                                                                │   └── test.sh
-                                                                                                                                                                            ├── docker-compose.yml
-                                                                                                                                                                            ├── Makefile
-                                                                                                                                                                            └── README.md
-                                                                                                                                                                            ```
+```
+mordor-tool-kit/
+├── docker/                      # Docker Compose infrastructure
+│   ├── docker-compose.yml      # All services configuration
+│   ├── README.md               # Docker setup documentation
+│   ├── .env.example            # Environment variables template
+│   ├── start.sh                # Quick start script
+│   ├── stop.sh                 # Stop script
+│   ├── prometheus/             # Prometheus configuration
+│   │   └── prometheus.yml
+│   └── grafana/                # Grafana provisioning
+│       └── provisioning/
+│           ├── datasources/
+│           └── dashboards/
+├── fork-monitor/               # Fork detection service
+│   ├── src/
+│   ├── Cargo.toml
+│   └── Dockerfile
+├── gas-estimator/              # Gas price analysis service
+│   ├── src/
+│   ├── Cargo.toml
+│   └── Dockerfile
+├── cli/                        # Command-line interface
+│   ├── src/
+│   └── Cargo.toml
+├── Makefile                    # Build and management commands
+└── README.md                   # This file
+```
 
                                                                                                                                                                             ### Building Components
 
