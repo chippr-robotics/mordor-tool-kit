@@ -116,7 +116,6 @@ services:
       - "4001:4001"  # Swarm
     volumes:
       - ipfs-data:/data/ipfs
-      - ./ipfs/config:/container-init.d
     environment:
       - IPFS_PROFILE=server
     networks:
@@ -211,8 +210,6 @@ services:
       # Other settings
       - SAFE_CONTRACT_ADDRESS=
       - SAFE_FUNDER_PRIVATE_KEY=
-    volumes:
-      - ./safe-transaction-service:/app/config
     depends_on:
       postgres:
         condition: service_healthy
