@@ -1,9 +1,17 @@
-.PHONY: help build up down restart logs status health metrics cli-build cli clean test
+.PHONY: help build up down restart logs status health metrics cli-build cli clean test docker-build docker-up docker-down
 
 # Default target
 help:
 	@echo "Mordor Monitoring System - Available Commands"
 	@echo "=============================================="
+	@echo ""
+	@echo "Docker Infrastructure:"
+	@echo "  make docker-build   - Build Docker images from docker/ directory"
+	@echo "  make docker-up      - Start all services from docker/ directory"
+	@echo "  make docker-down    - Stop all services from docker/ directory"
+	@echo "  make docker-logs    - View logs from docker/ services"
+	@echo ""
+	@echo "Legacy Commands (if docker-compose.yml exists in root):"
 	@echo "  make build          - Build all Docker images"
 	@echo "  make up             - Start all services"
 	@echo "  make down           - Stop all services"
@@ -12,25 +20,54 @@ help:
 	@echo "  make logs-fork      - View fork monitor logs"
 	@echo "  make logs-gas       - View gas estimator logs"
 	@echo "  make logs-node      - View Mordor node logs"
-	@echo "  make status         - Check blockchain status"
-	@echo "  make health         - Health check all containers"
-	@echo "  make metrics-fork   - View fork monitor metrics"
-	@echo "  make metrics-gas    - View gas estimator metrics"
+	@echo ""
+	@echo "CLI Tools:"
 	@echo "  make cli-build      - Build CLI tool"
 	@echo "  make cli            - Run CLI tool"
+	@echo "  make status         - Check blockchain status"
+	@echo "  make health         - Health check all containers"
 	@echo "  make monitor        - Monitor blockchain in real-time"
 	@echo "  make gas            - Get gas price recommendations"
+	@echo "  make metrics-fork   - View fork monitor metrics"
+	@echo "  make metrics-gas    - View gas estimator metrics"
+	@echo ""
+	@echo "Maintenance:"
 	@echo "  make clean          - Remove all containers and volumes"
 	@echo "  make test           - Run all tests"
 	@echo ""
-	@echo "Ports:"
-	@echo "  - Mordor Node RPC:    http://localhost:8545"
-	@echo "  - Fork Monitor:       http://localhost:9090/metrics"
-	@echo "  - Gas Estimator:      http://localhost:9091/metrics"
-	@echo "  - Prometheus:         http://localhost:9092"
-	@echo "  - Grafana:            http://localhost:3000 (admin/admin)"
+	@echo "Service Ports (when using docker/):"
+	@echo "  - Mordor Node RPC:           http://localhost:8545"
+	@echo "  - Fork Monitor:              http://localhost:9090/metrics"
+	@echo "  - Gas Estimator:             http://localhost:9091/metrics"
+	@echo "  - Prometheus:                http://localhost:9092"
+	@echo "  - Grafana:                   http://localhost:3000 (admin/admin)"
+	@echo "  - IPFS API:                  http://localhost:5001"
+	@echo "  - IPFS Gateway:              http://localhost:8080"
+	@echo "  - Safe Transaction Service:  http://localhost:8000"
+	@echo "  - RabbitMQ Management:       http://localhost:15672 (safe/safe)"
 
-# Build all images
+# Docker commands for new infrastructure in docker/ directory
+docker-build:
+	@echo "Building Docker images from docker/ directory..."
+	cd docker && docker-compose build
+
+docker-up:
+	@echo "Starting all services from docker/ directory..."
+	cd docker && ./start.sh
+
+docker-down:
+	@echo "Stopping all services from docker/ directory..."
+	cd docker && ./stop.sh
+
+docker-logs:
+	@echo "Viewing logs from docker/ services..."
+	cd docker && docker-compose logs -f
+
+docker-restart:
+	@echo "Restarting all services from docker/ directory..."
+	cd docker && docker-compose restart
+
+# Build all images (legacy)
 build:
 	@echo "Building Docker images..."
 	docker-compose build

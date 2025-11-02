@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'mordor-testnet'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: []
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "rules/*.yml"
+
+scrape_configs:
+  # Fork Monitor metrics
+  - job_name: 'fork-monitor'
+    static_configs:
+      - targets: ['fork-monitor:9090']
+        labels:
+          service: 'fork-monitor'
+
+  # Gas Estimator metrics
+  - job_name: 'gas-estimator'
+    static_configs:
+      - targets: ['gas-estimator:9091']
+        labels:
+          service: 'gas-estimator'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # IPFS metrics (if available)
+  - job_name: 'ipfs'
+    static_configs:
+      - targets: ['ipfs:5001']
+        labels:
+          service: 'ipfs'
+    metrics_path: '/debug/metrics/prometheus'

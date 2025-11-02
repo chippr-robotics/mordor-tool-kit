@@ -1,0 +1,319 @@
+version: '3.8'
+
+services:
+  # Mordor Testnet Node (Core-Geth)
+  mordor-node:
+    image: etclabscore/core-geth:latest
+    container_name: mordor-node
+    restart: unless-stopped
+    ports:
+      - "8545:8545"  # HTTP RPC
+      - "8546:8546"  # WebSocket
+      - "30303:30303"  # P2P
+    volumes:
+      - mordor-data:/root/.ethereum
+    command: >
+      --mordor
+      --http
+      --http.addr=0.0.0.0
+      --http.port=8545
+      --http.api=eth,net,web3,personal,admin
+      --http.corsdomain=*
+      --ws
+      --ws.addr=0.0.0.0
+      --ws.port=8546
+      --ws.api=eth,net,web3
+      --ws.origins=*
+      --syncmode=fast
+    networks:
+      - mordor-network
+
+  # Fork Monitor
+  fork-monitor:
+    build:
+      context: ../fork-monitor
+      dockerfile: Dockerfile
+    container_name: fork-monitor
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    environment:
+      - RPC_URL=http://mordor-node:8545
+      - POLL_INTERVAL_SECS=5
+      - RUST_LOG=info
+    depends_on:
+      - mordor-node
+    networks:
+      - mordor-network
+
+  # Gas Estimator
+  gas-estimator:
+    build:
+      context: ../gas-estimator
+      dockerfile: Dockerfile
+    container_name: gas-estimator
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    environment:
+      - RPC_URL=http://mordor-node:8545
+      - POLL_INTERVAL_SECS=12
+      - RUST_LOG=info
+    depends_on:
+      - mordor-node
+    networks:
+      - mordor-network
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    depends_on:
+      - fork-monitor
+      - gas-estimator
+    networks:
+      - mordor-network
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - mordor-network
+
+  # IPFS (Kubo)
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: ipfs
+    restart: unless-stopped
+    ports:
+      - "5001:5001"  # API
+      - "8080:8080"  # Gateway
+      - "4001:4001"  # Swarm
+    volumes:
+      - ipfs-data:/data/ipfs
+      - ./ipfs/config:/container-init.d
+    environment:
+      - IPFS_PROFILE=server
+    networks:
+      - mordor-network
+
+  # PostgreSQL for Safe Transaction Service
+  postgres:
+    image: postgres:14-alpine
+    container_name: safe-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=safe
+      - POSTGRES_PASSWORD=safe
+      - POSTGRES_DB=safe
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - mordor-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safe"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Safe Transaction Service
+  redis:
+    image: redis:7-alpine
+    container_name: safe-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - mordor-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ for Safe Transaction Service
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: safe-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"  # AMQP
+      - "15672:15672"  # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=safe
+      - RABBITMQ_DEFAULT_PASS=safe
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - mordor-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Safe Transaction Service
+  safe-transaction-service:
+    image: safeglobal/safe-transaction-service:latest
+    container_name: safe-transaction-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Database
+      - DATABASE_URL=postgres://safe:safe@postgres:5432/safe
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=safe
+      - POSTGRES_PASSWORD=safe
+      - POSTGRES_DB=safe
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://safe:safe@rabbitmq:5672
+      # Ethereum
+      - ETHEREUM_NODE_URL=http://mordor-node:8545
+      - ETHEREUM_TRACING_NODE_URL=http://mordor-node:8545
+      # Network (Mordor testnet)
+      - ETHEREUM_CHAIN_ID=63
+      # Django
+      - DJANGO_SECRET_KEY=changeme-use-strong-secret-key-in-production
+      - DJANGO_ALLOWED_HOSTS=*
+      - DEBUG=False
+      # Other settings
+      - SAFE_CONTRACT_ADDRESS=
+      - SAFE_FUNDER_PRIVATE_KEY=
+    volumes:
+      - ./safe-transaction-service:/app/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mordor-node:
+        condition: service_started
+    networks:
+      - mordor-network
+    command: >
+      bash -c "
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        gunicorn --bind 0.0.0.0:8000 config.wsgi
+      "
+
+  # Safe Transaction Service Worker (Celery)
+  safe-worker:
+    image: safeglobal/safe-transaction-service:latest
+    container_name: safe-worker
+    restart: unless-stopped
+    environment:
+      # Database
+      - DATABASE_URL=postgres://safe:safe@postgres:5432/safe
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=safe
+      - POSTGRES_PASSWORD=safe
+      - POSTGRES_DB=safe
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://safe:safe@rabbitmq:5672
+      # Ethereum
+      - ETHEREUM_NODE_URL=http://mordor-node:8545
+      - ETHEREUM_TRACING_NODE_URL=http://mordor-node:8545
+      # Network (Mordor testnet)
+      - ETHEREUM_CHAIN_ID=63
+      # Django
+      - DJANGO_SECRET_KEY=changeme-use-strong-secret-key-in-production
+      - DEBUG=False
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mordor-node:
+        condition: service_started
+    networks:
+      - mordor-network
+    command: celery -A config worker --loglevel=info
+
+  # Safe Transaction Service Scheduler (Celery Beat)
+  safe-scheduler:
+    image: safeglobal/safe-transaction-service:latest
+    container_name: safe-scheduler
+    restart: unless-stopped
+    environment:
+      # Database
+      - DATABASE_URL=postgres://safe:safe@postgres:5432/safe
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=safe
+      - POSTGRES_PASSWORD=safe
+      - POSTGRES_DB=safe
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://safe:safe@rabbitmq:5672
+      # Ethereum
+      - ETHEREUM_NODE_URL=http://mordor-node:8545
+      - ETHEREUM_TRACING_NODE_URL=http://mordor-node:8545
+      # Network (Mordor testnet)
+      - ETHEREUM_CHAIN_ID=63
+      # Django
+      - DJANGO_SECRET_KEY=changeme-use-strong-secret-key-in-production
+      - DEBUG=False
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mordor-node:
+        condition: service_started
+    networks:
+      - mordor-network
+    command: celery -A config beat --loglevel=info
+
+networks:
+  mordor-network:
+    driver: bridge
+
+volumes:
+  mordor-data:
+  prometheus-data:
+  grafana-data:
+  ipfs-data:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
