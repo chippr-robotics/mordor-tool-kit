@@ -4,6 +4,8 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
+    # Note: This URL refers to the internal Docker network port for the Prometheus container.
+    # If you want to access Prometheus from your host, use the host-exposed port (e.g., 9092).
     url: http://prometheus:9090
     isDefault: true
     editable: true
